@@ -1,0 +1,372 @@
+#!/bin/bash
+# ==============================================================================
+# :: CodebroAI cbproxy // Native Linux CLI Proxy Controller ::
+# :: Philosophy: Zero Bloat • Zero Root Dependency • Strict Tunnel Routing ::
+# ==============================================================================
+
+# ANSI Color Palette
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# XDG Standard Path Resolution
+USER_CONFIG_DIR="$HOME/.config/cbproxy"
+if [ -d "$USER_CONFIG_DIR" ]; then
+    CONFIG_PATH="$USER_CONFIG_DIR/config.json"
+    BACKUP_PATH="$USER_CONFIG_DIR/vless.txt"
+    FLAG_FILE="$USER_CONFIG_DIR/.proxy_active"
+else
+    CONFIG_PATH="$PROJECT_DIR/config/config.json"
+    BACKUP_PATH="$PROJECT_DIR/config/vless.txt"
+    FLAG_FILE="$PROJECT_DIR/.proxy_active"
+fi
+
+SERVICE_NAME="cbproxy"
+
+show_banner() {
+    echo -e "${CYAN}${BOLD}"
+    cat << 'EOF'
+ ██████╗ ██████╗ ██████╗ ██████╗  ██████╗ ██╗  ██╗██╗   ██╗
+██╔════╝ ██╔══██╗██╔══██╗██╔══██╗██╔═══██╗╚██╗██╔╝╚██╗ ██╔╝
+██║      ██████╔╝██████╔╝██████╔╝██║   ██║ ╚███╔╝  ╚████╔╝ 
+██║      ██╔══██╗██╔═══╝ ██╔══██╗██║   ██║ ██╔██╗   ╚██╔╝  
+╚██████╗ ██████╔╝██║     ██║  ██║╚██████╔╝██╔╝ ██╗   ██║   
+ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   
+EOF
+    echo -e "${NC}${CYAN}:: CodebroAI CBPROXY // LINUX CLI PROXY & TUNNEL CONTROLLER ::${NC}"
+    echo -e "${CYAN}:: Philosophy: Zero Bloat • Zero Root Dependency • Strict Tunnel Routing ::${NC}"
+    echo "------------------------------------------------------------------"
+}
+
+start_proxy() {
+    show_banner
+    echo -e "${CYAN}[INFO]${NC} Initializing tunnel daemon..."
+    systemctl --user restart "$SERVICE_NAME"
+    sleep 1
+
+    if systemctl --user is-active --quiet "$SERVICE_NAME"; then
+        echo -e "${GREEN}[OK]${NC} Proxy daemon running via systemd (${SERVICE_NAME})"
+        echo -e "     >> SOCKS5 Inbound : 127.0.0.1:10808"
+        echo -e "     >> HTTP Inbound   : 127.0.0.1:10809"
+        
+        # Apply GNOME System Proxy for Browsers
+        gsettings set org.gnome.system.proxy mode 'manual' 2>/dev/null || true
+        gsettings set org.gnome.system.proxy.http host '127.0.0.1' 2>/dev/null || true
+        gsettings set org.gnome.system.proxy.http port 10809 2>/dev/null || true
+        gsettings set org.gnome.system.proxy.https host '127.0.0.1' 2>/dev/null || true
+        gsettings set org.gnome.system.proxy.https port 10809 2>/dev/null || true
+        echo -e "${GREEN}[OK]${NC} GNOME desktop proxy configured to 127.0.0.1:10809"
+        
+        # Session & Terminal Environment
+        systemctl --user set-environment http_proxy=http://127.0.0.1:10809 https_proxy=http://127.0.0.1:10809 all_proxy=socks5://127.0.0.1:10808 HTTP_PROXY=http://127.0.0.1:10809 HTTPS_PROXY=http://127.0.0.1:10809 ALL_PROXY=socks5://127.0.0.1:10808 2>/dev/null || true
+        touch "$FLAG_FILE"
+        export http_proxy="http://127.0.0.1:10809"
+        export https_proxy="http://127.0.0.1:10809"
+        export all_proxy="socks5://127.0.0.1:10808"
+        echo -e "${GREEN}[OK]${NC} Terminal environment variables injected"
+
+        # IDE Auto-Detection & Hot-Reload
+        python3 - << 'PYEOF' 2>/dev/null || true
+import json, os
+ide_paths = [
+    os.path.expanduser("~/.config/Antigravity IDE/User/settings.json"),
+    os.path.expanduser("~/.config/Code/User/settings.json"),
+    os.path.expanduser("~/.config/VSCodium/User/settings.json")
+]
+for path in ide_paths:
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            data["http.proxy"] = "http://127.0.0.1:10809"
+            data["http.proxySupport"] = "on"
+            with open(path, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception:
+            pass
+PYEOF
+        echo -e "${GREEN}[OK]${NC} Developer IDEs configured (Antigravity/VS Code)"
+        echo ""
+        show_status_inline
+    else
+        echo -e "${RED}[ERROR]${NC} Failed to start daemon. Inspect: journalctl --user -u $SERVICE_NAME -n 30"
+        exit 1
+    fi
+}
+
+stop_proxy() {
+    show_banner
+    echo -e "${YELLOW}[INFO]${NC} Stopping proxy daemon..."
+    systemctl --user stop "$SERVICE_NAME"
+    
+    # Disable GNOME System Proxy
+    gsettings set org.gnome.system.proxy mode 'none' 2>/dev/null || true
+    systemctl --user unset-environment http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY 2>/dev/null || true
+    rm -f "$FLAG_FILE"
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    
+    # Reset Developer IDEs to direct connection
+    python3 - << 'PYEOF' 2>/dev/null || true
+import json, os
+ide_paths = [
+    os.path.expanduser("~/.config/Antigravity IDE/User/settings.json"),
+    os.path.expanduser("~/.config/Code/User/settings.json"),
+    os.path.expanduser("~/.config/VSCodium/User/settings.json")
+]
+for path in ide_paths:
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            data.pop("http.proxy", None)
+            data.pop("http.proxySupport", None)
+            with open(path, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception:
+            pass
+PYEOF
+    echo -e "${RED}${BOLD}[STOPPED]${NC} Proxy daemon stopped."
+    echo -e "${YELLOW}>>${NC} System reverted to normal direct connection."
+    echo ""
+    show_status_inline
+}
+
+show_status_inline() {
+    if systemctl --user is-active --quiet "$SERVICE_NAME"; then
+        echo -e ":: ${BOLD}CONNECTION STATUS${NC} ::"
+        echo -e "   [Daemon]     : ${GREEN}${BOLD}Active (Running: $SERVICE_NAME)${NC}"
+        VPN_IP=$(curl -s -m 5 -x http://127.0.0.1:10809 https://api.ipify.org 2>/dev/null)
+        if [ -n "$VPN_IP" ]; then
+            echo -e "   [Public IP]  : ${CYAN}${BOLD}$VPN_IP${NC} (Routed via Proxy Tunnel)"
+        else
+            echo -e "   [Public IP]  : ${YELLOW}Warning: Verification ping timed out${NC}"
+        fi
+    else
+        echo -e ":: ${BOLD}CONNECTION STATUS${NC} ::"
+        echo -e "   [Daemon]     : ${RED}${BOLD}Inactive (Stopped)${NC}"
+        REAL_IP=$(curl -s -m 5 https://api.ipify.org 2>/dev/null)
+        if [ -n "$REAL_IP" ]; then
+            echo -e "   [Public IP]  : ${RED}${BOLD}$REAL_IP${NC} (Direct ISP Connection - No Proxy)"
+        else
+            echo -e "   [Public IP]  : ${YELLOW}Offline / No Internet${NC}"
+        fi
+    fi
+}
+
+show_status() {
+    show_banner
+    show_status_inline
+    echo ""
+}
+
+import_link() {
+    LINK="$1"
+    if [ -z "$LINK" ]; then
+        echo -n "Enter configuration URL (vless://, vmess://, or trojan://): "
+        read -r LINK
+    fi
+
+    if [ -z "$LINK" ]; then
+        echo -e "${RED}[ERROR]${NC} No configuration link provided."
+        exit 1
+    fi
+
+    echo -e "${CYAN}[INFO]${NC} Parsing link and building config.json..."
+    python3 - "$LINK" "$CONFIG_PATH" << 'EOF'
+import sys
+import json
+import base64
+from urllib.parse import urlparse, parse_qs, unquote
+
+link = sys.argv[1].strip()
+config_path = sys.argv[2]
+
+try:
+    if link.startswith("vless://") or link.startswith("trojan://"):
+        parsed = urlparse(link)
+        protocol = parsed.scheme
+        auth = parsed.username
+        host = parsed.hostname
+        port = parsed.port or 443
+        qs = parse_qs(parsed.query)
+
+        sni = qs.get("sni", [host])[0]
+        security = qs.get("security", ["tls"])[0]
+        network = qs.get("type", ["tcp"])[0]
+        fp = qs.get("fp", ["chrome"])[0]
+        encryption = qs.get("encryption", ["none"])[0]
+        alpn_raw = qs.get("alpn", [None])[0]
+        alpn = [x.strip() for x in unquote(alpn_raw).split(",")] if alpn_raw else None
+
+        if protocol == "vless":
+            outbound = {
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [{
+                        "address": host,
+                        "port": port,
+                        "users": [{"id": auth, "encryption": encryption}]
+                    }]
+                }
+            }
+        else: # trojan
+            outbound = {
+                "protocol": "trojan",
+                "settings": {
+                    "servers": [{
+                        "address": host,
+                        "port": port,
+                        "password": auth
+                    }]
+                }
+            }
+
+        tls_settings = {
+            "serverName": sni,
+            "verifyPeerCertByName": host,
+            "fingerprint": fp
+        }
+        if alpn:
+            tls_settings["alpn"] = alpn
+
+        outbound["streamSettings"] = {
+            "network": network,
+            "security": security,
+            "tlsSettings": tls_settings
+        }
+
+    elif link.startswith("vmess://"):
+        protocol = "vmess"
+        raw_b64 = link[8:]
+        padded = raw_b64 + "=" * ((4 - len(raw_b64) % 4) % 4)
+        data = json.loads(base64.b64decode(padded).decode("utf-8"))
+        host = data.get("add")
+        port = int(data.get("port", 443))
+        uuid = data.get("id")
+        aid = int(data.get("aid", 0))
+        net = data.get("net", "tcp")
+        tls = data.get("tls", "tls")
+        sni = data.get("sni") or data.get("host") or host
+        fp = data.get("fp", "chrome")
+        alpn_raw = data.get("alpn", "")
+        alpn = [x.strip() for x in alpn_raw.split(",")] if alpn_raw else None
+
+        outbound = {
+            "protocol": "vmess",
+            "settings": {
+                "vnext": [{
+                    "address": host,
+                    "port": port,
+                    "users": [{"id": uuid, "alterId": aid, "security": "auto"}]
+                }]
+            },
+            "streamSettings": {
+                "network": net,
+                "security": tls if tls else "none",
+                "tlsSettings": {
+                    "serverName": sni,
+                    "verifyPeerCertByName": host,
+                    "fingerprint": fp
+                }
+            }
+        }
+        if alpn:
+            outbound["streamSettings"]["tlsSettings"]["alpn"] = alpn
+    else:
+        print("[ERROR] Unsupported format. Link must start with vless://, vmess://, or trojan://", file=sys.stderr)
+        sys.exit(1)
+
+    config = {
+        "log": {
+            "loglevel": "warning"
+        },
+        "inbounds": [
+            {
+                "port": 10808,
+                "listen": "127.0.0.1",
+                "protocol": "socks",
+                "settings": {
+                    "auth": "noauth",
+                    "udp": True
+                }
+            },
+            {
+                "port": 10809,
+                "listen": "127.0.0.1",
+                "protocol": "http"
+            }
+        ],
+        "outbounds": [outbound]
+    }
+
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    print(f"[OK] Configuration built for {protocol.upper()} -> {host}:{port} (SNI: {sni})")
+
+except Exception as e:
+    print(f"[ERROR] Failed to parse URL: {e}", file=sys.stderr)
+    sys.exit(1)
+EOF
+
+    if [ $? -eq 0 ]; then
+        echo "$LINK" > "$BACKUP_PATH"
+        echo -e "${GREEN}[OK]${NC} Link stored in $BACKUP_PATH"
+        if systemctl --user is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+            echo -e "${CYAN}[INFO]${NC} Reloading active daemon with new configuration..."
+            systemctl --user restart "$SERVICE_NAME"
+        fi
+    fi
+}
+
+show_help() {
+    echo -e "${CYAN}${BOLD}:: CodebroAI cbproxy // Native Linux CLI Proxy Controller ::${NC}"
+    echo ""
+    echo -e "${BOLD}USAGE:${NC}"
+    echo "    cbproxy [COMMAND] [OPTIONS]"
+    echo ""
+    echo -e "${BOLD}COMMANDS:${NC}"
+    echo "    on, start          Start proxy daemon & auto-configure system/terminal/IDEs"
+    echo "    off, stop          Stop proxy daemon & cleanly restore normal direct connection"
+    echo "    status             Display service state and verified external IP address"
+    echo "    import <URL>       Import and build config from a vless://, vmess://, or trojan:// URL"
+    echo "    restart            Restart active proxy service"
+    echo "    help, -h, --help   Display this command reference"
+    echo ""
+    echo -e "${BOLD}EXAMPLES:${NC}"
+    echo "    cbproxy on"
+    echo "    cbproxy off"
+    echo "    cbproxy status"
+    echo "    cbproxy import \"vless://<UUID>@your-server.com:443?security=tls&sni=zoom.us#node\""
+    echo ""
+}
+
+case "$1" in
+    start|on)
+        start_proxy
+        ;;
+    stop|off)
+        stop_proxy
+        ;;
+    status)
+        show_status
+        ;;
+    restart)
+        start_proxy
+        ;;
+    import|update)
+        import_link "$2"
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        show_help
+        exit 1
+        ;;
+esac

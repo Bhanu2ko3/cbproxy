@@ -1,0 +1,12 @@
+[Unit]
+Description=CodebroAI cbproxy Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=xray run -c %h/.config/cbproxy/config.json
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

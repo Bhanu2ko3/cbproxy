@@ -1,0 +1,15 @@
+# Runtime dynamic files
+.proxy_active
+*.log
+*.tmp
+.DS_Store
+
+# User-specific cache
+__pycache__/
+*.py[cod]
+
+# Sensitive credentials & active connection configs
+config/config.json
+config/vless.txt
+vless.txt
+config.json
