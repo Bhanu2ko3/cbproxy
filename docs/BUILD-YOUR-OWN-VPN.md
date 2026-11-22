@@ -1,6 +1,6 @@
-# 🚀 Complete Blueprint: Building Your Own Private VLESS SNI-Bypass Server
+# 🚀 Complete Blueprint: Deploying Your Own Private VLESS Cloud Proxy Server
 
-A comprehensive, step-by-step engineering guide to deploying, configuring, and maintaining your own high-speed, private, zero-rated (Zoom SNI) VLESS VPN server on cloud infrastructure.
+A comprehensive, step-by-step engineering guide to deploying, configuring, and maintaining your own high-speed, private VLESS & Xray proxy gateway on cloud infrastructure.
 
 ---
 
@@ -10,10 +10,10 @@ A comprehensive, step-by-step engineering guide to deploying, configuring, and m
 3. [Step 1: Provisioning the Cloud VPS](#step-1-provisioning-the-cloud-vps)
 4. [Step 2: Server Security & Hardening](#step-2-server-security--hardening)
 5. [Step 3: Installing 3X-UI (Xray Management Panel)](#step-3-installing-3x-ui-xray-management-panel)
-6. [Step 4: Configuring the VLESS Inbound with SNI Spoofing](#step-4-configuring-the-vless-inbound-with-sni-spoofing)
+6. [Step 4: Configuring the VLESS Inbound with TLS Transport](#step-4-configuring-the-vless-inbound-with-tls-transport)
 7. [Step 5: Testing & Connecting to Your cbproxy Client](#step-5-testing--connecting-to-your-cbproxy-client)
 8. [Step 6: Phone Setup (Android & iOS)](#step-6-phone-setup-android--ios)
-9. [Step 7: Anti-Ban & Long-Term Maintenance Strategy](#step-7-anti-ban--long-term-maintenance-strategy)
+9. [Step 7: High-Availability & Long-Term Reliability Strategy](#step-7-high-availability--long-term-reliability-strategy)
 
 ---
 
@@ -26,25 +26,25 @@ A comprehensive, step-by-step engineering guide to deploying, configuring, and m
 |             |                                               |
 |             v (HTTP Proxy: 127.0.0.1:10809)                 |
 |       Local V2Ray Core                                      |
-|  (Packs data into VLESS, sets SNI: zoom.us, TLS: Chrome fp) |
+|  (Packs data into VLESS, sets TLS: Chrome fp, Port: 443)    |
 +-------------------------------------------------------------+
                               |
                               v (Encrypted TLS over Port 443)
 +-------------------------------------------------------------+
-|              ISP Gateway (Dialog / SLT / Mobitel)           |
-|  Deep Packet Inspection (DPI) sees:                         |
-|  - Destination Port: 443                                    |
-|  - TLS SNI Header  : zoom.us                                |
-|  - Verdict         : Zoom Call -> Billed to Zoom Package!   |
+|              Intermediate Network / Gateway                 |
+|  Network Firewall / DPI sees:                               |
+|  - Destination Port: 443 (Standard HTTPS)                   |
+|  - TLS Handshake   : Valid TLS 1.3 ClientHello              |
+|  - Verdict         : Legitimate Encrypted Web Traffic       |
 +-------------------------------------------------------------+
                               |
                               v (Forwarded directly)
 +-------------------------------------------------------------+
 |                Your Cloud VPS (e.g., Hetzner / Contabo)     |
 |  3X-UI / Xray-Core Daemon (Port 443)                        |
-|  - Validates UUID (ef05... or your unique key)              |
-|  - Strips outer TLS wrapper                                 |
-|  - Forwards requests to real destination (Google, YT, etc.) |
+|  - Validates Client UUID                                    |
+|  - Strips outer TLS transport wrapper                       |
+|  - Forwards requests to destination (Google, GitHub, etc.)  |
 +-------------------------------------------------------------+
                               |
                               v (Unrestricted Gigabit Internet)
@@ -137,11 +137,11 @@ Log in using the credentials you just created.
 
 ---
 
-## 6. Step 4: Configuring the VLESS Inbound with SNI Spoofing
+## 6. Step 4: Configuring the VLESS Inbound with TLS Transport
 
 Once inside the 3X-UI dashboard:
 
-1. Click on **Inbounds** (වම් පැත්තේ Navigation menu එකේ) ➡️ Click **Add Inbound** (`+` button).
+1. Click on **Inbounds** (in the left navigation menu) ➡️ Click **Add Inbound** (`+` button).
 2. Fill in the configuration details as follows:
 
 | Field | Value | Explanation |
@@ -153,20 +153,20 @@ Once inside the 3X-UI dashboard:
 | **Client ID (UUID)** | Auto-generated | Keep this unique UUID |
 | **Transmission (Network)** | `tcp` | Fast, standard transport |
 | **Security** | `tls` | Enables TLS transport security |
-| **SNI** | `zoom.us` | **The Bypass Secret:** Spoofs the TLS handshake header |
+| **SNI** | `your-domain.com` | Standard TLS Server Name Indication header |
 | **uTLS (Fingerprint)** | `chrome` | Masks traffic as genuine Google Chrome browser |
 | **ALPN** | `h2,http/1.1` | HTTP/2 and HTTP/1.1 support |
 
 3. Under **Certificates**:
    - If using a domain: Select your domain's Let's Encrypt certificate.
-   - If using pure IP / Reality: Enable **Reality** mode, target `zoom.us:443`, which borrows the real TLS certificate of Zoom without needing your own domain!
+   - If using pure IP / Reality: Enable **Reality** mode, which utilizes REALITY protocol masquerading to negotiate TLS directly with web endpoints.
 
 4. Click **Create / Save**.
 
 5. On the inbound card, click the **QR / Link Icon** (Show Link) and click **Copy**.
    - Your link will look like:
      ```text
-     vless://<UUID>@YOUR_SERVER_IP:443?alpn=h2%2Chttp%2F1.1&encryption=none&fp=chrome&security=tls&sni=zoom.us&type=tcp#Codebro-Private
+     vless://<UUID>@YOUR_SERVER_IP:443?alpn=h2%2Chttp%2F1.1&encryption=none&fp=chrome&security=tls&sni=your-domain.com&type=tcp#Codebro-Private
      ```
 
 ---
@@ -187,14 +187,14 @@ cbproxy on
 
 Verify your connection and external IP:
 ```bash
-vpn status
+cbproxy status
 ```
 
 You should see:
 ```text
-🔍 Testing Connection Status:
-   [Service] : 🟢 Active (Running)
-   [VPN IP]  : 🌐 <YOUR_SERVER_IP> (Traffic routed through VLESS server)
+:: CONNECTION STATUS ::
+   [Daemon]     : Active (Running: cbproxy)
+   [Public IP]  : <YOUR_SERVER_IP> (Routed via Proxy Tunnel)
 ```
 
 ---
@@ -205,7 +205,7 @@ You should see:
 1. Install **v2rayNG** or **NekoBox** from Google Play Store or GitHub.
 2. Open the app ➡️ Tap `+` (Top right) ➡️ Select **Import config from Clipboard**.
 3. Tap the connected server and tap the **V** button (Connect) at the bottom.
-4. Your entire Android phone now routes through your private Zoom tunnel!
+4. Your entire Android phone now routes through your private cloud tunnel!
 
 ### iOS (iPhone):
 1. Install **V2Box** or **Streisand** from Apple App Store.
@@ -214,17 +214,17 @@ You should see:
 
 ---
 
-## 9. Step 7: Anti-Ban & Long-Term Maintenance Strategy
+## 9. Step 7: High-Availability & Long-Term Reliability Strategy
 
-To make sure your private server lasts for months/years without being blocked by Dialog / SLT:
+To ensure your private cloud proxy maintains maximum uptime and connection reliability:
 
-### 1. The Single-User Advantage
-Because you are the sole user of this server, your daily bandwidth pattern (3–10 GB) looks virtually indistinguishable from a regular human working from home via Zoom. Unlike public sellers who host 100+ users on one IP, your IP will rarely trigger ISP anomaly detection.
+### 1. The Dedicated User Advantage
+Because you are operating a private single-user gateway, your bandwidth consumption mimics normal professional development activity without triggering threshold alerts associated with overloaded commercial VPN servers.
 
-### 2. If an IP Ever Gets Flagged:
-If the ISP blocks your VPS IP in the future, don't delete your server:
-1. In **Hetzner / DigitalOcean**, simply unassign the IPv4 address and attach a new floating IP (~€0.50).
-2. Or use **Cloudflare CDN** as a reverse proxy shield in front of your server (`WebSocket + CDN` mode), which makes the server's real IP completely invisible to the ISP.
+### 2. High-Availability Failover Options:
+If your VPS IP encounters routing congestion or latency:
+1. In **Hetzner / DigitalOcean**, simply reassign the IPv4 address or attach a floating IP.
+2. Or configure a **Cloudflare CDN** reverse proxy in front of your server (`WebSocket + CDN` mode), which masks the server's direct IP behind Cloudflare's global edge network.
 
 ### 3. Server Maintenance Commands:
 ```bash
@@ -245,7 +245,7 @@ x-ui restart
 - [x] VPS provisioned on Hetzner / DigitalOcean
 - [x] Firewall configured with ports `22`, `443`, and `2053` open
 - [x] 3X-UI installed via one-line installer
-- [x] VLESS inbound created with `port: 443`, `sni: zoom.us`, `fp: chrome`
+- [x] VLESS inbound created with `port: 443`, TLS enabled, `fp: chrome`
 - [x] VLESS link imported to local client via `cbproxy import`
 - [x] Verified routing via `cbproxy status`
 

@@ -83,7 +83,7 @@ COMMANDS:
 
 ```bash
 # 1. Import a new configuration link
-cbproxy import "vless://00000000-0000-0000-0000-000000000000@example.com:443?security=tls&sni=zoom.us#node"
+cbproxy import "vless://00000000-0000-0000-0000-000000000000@example.com:443?security=tls&sni=example.com#node"
 
 # 2. Connect and route all traffic
 cbproxy on
@@ -124,8 +124,8 @@ cbproxy/
                    ▼ (Local Inbound: HTTP 10809 / SOCKS5 10808)
          [ Local Core Engine ]
                    │
-                   ▼ (TLS Tunnel with Custom SNI e.g. zoom.us)
-            [ ISP Gateway ]  ──> [ Inspected & Billed to Target ISP Package ]
+                   ▼ (TLS Tunnel with Custom SNI e.g. example.com)
+            [ Network Gateway ]  ──> [ Inspected as Standard HTTPS (Port 443) ]
                    │
                    ▼ (Encrypted Transit over Port 443)
        [ Remote Proxy Server ] (Xray-core / 3X-UI Cloud Gateway)

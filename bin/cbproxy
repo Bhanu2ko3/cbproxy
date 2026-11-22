@@ -342,7 +342,7 @@ show_help() {
     echo "    cbproxy on"
     echo "    cbproxy off"
     echo "    cbproxy status"
-    echo "    cbproxy import \"vless://<UUID>@your-server.com:443?security=tls&sni=zoom.us#node\""
+    echo "    cbproxy import \"vless://<UUID>@your-server.com:443?security=tls&sni=your-server.com#node\""
     echo ""
 }
 

@@ -39,7 +39,7 @@
         "network": "tcp",
         "security": "tls",
         "tlsSettings": {
-          "serverName": "zoom.us",
+          "serverName": "example.com",
           "verifyPeerCertByName": "example.your-server.com",
           "fingerprint": "chrome",
           "alpn": [
